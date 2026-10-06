@@ -1,6 +1,6 @@
 const SUPABASE_URL = "https://fcdoixlxylazmosevbtx.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_M2NTtqT-2sMrlPSWF4embg_fbbzjvB1";
-const PAYSTACK_PUBLIC_KEY = "pk_test_b9b9f4ff71c2dc350f8ff9a9c72b75dde32ddb7b";
+const PAYSTACK_PUBLIC_KEY = "sk_test_8f873294baaa852ed2435587a42727797d392be5";
 const BREVO_API_KEY = "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";
 
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
