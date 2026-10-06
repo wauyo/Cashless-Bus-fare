@@ -84,11 +84,11 @@ function handleBooking(e) {
     return;
   }
 
-  // Success handler function defined explicitly to satisfy Paystack callback validation
-  const onPaymentSuccess = async function(response) {
+  // Explicit function declarations required by Paystack validator
+  function handleSuccess(response) {
     payBtn.innerText = "Processing Booking...";
 
-    const { data, error } = await supabaseClient
+    supabaseClient
       .from("bookings")
       .insert([{
         route_id: currentRoute.id,
@@ -99,54 +99,55 @@ function handleBooking(e) {
         total_amount: totalAmount,
         payment_status: "completed",
         paystack_reference: response.reference || response.trxref
-      }]);
+      }])
+      .then(async ({ data, error }) => {
+        if (!error) {
+          await supabaseClient
+            .from("routes")
+            .update({ available_seats: currentRoute.availableSeats - seats })
+            .eq("id", currentRoute.id);
 
-    if (!error) {
-      await supabaseClient
-        .from("routes")
-        .update({ available_seats: currentRoute.availableSeats - seats })
-        .eq("id", currentRoute.id);
+          await sendEmailReceipt({
+            email,
+            name,
+            origin: currentRoute.origin,
+            destination: currentRoute.destination,
+            time: new Date(currentRoute.time).toLocaleString(),
+            seats,
+            amount: totalAmount,
+            ref: response.reference || response.trxref
+          });
 
-      await sendEmailReceipt({
-        email,
-        name,
-        origin: currentRoute.origin,
-        destination: currentRoute.destination,
-        time: new Date(currentRoute.time).toLocaleString(),
-        seats,
-        amount: totalAmount,
-        ref: response.reference || response.trxref
+          alert("Booking & Payment Successful! Check your email for ticket details.");
+          location.reload();
+        } else {
+          alert("Payment successful, but saving booking failed: " + error.message);
+          payBtn.disabled = false;
+          payBtn.innerText = "Pay with Paystack (M-Pesa)";
+        }
       });
+  }
 
-      alert("Booking & Payment Successful! Check your email for ticket details.");
-      location.reload();
-    } else {
-      alert("Payment successful, but saving booking failed: " + error.message);
-      payBtn.disabled = false;
-      payBtn.innerText = "Pay with Paystack (M-Pesa)";
-    }
-  };
-
-  const onPaymentClose = function() {
+  function handleClose() {
     alert("Payment window closed.");
     payBtn.disabled = false;
     payBtn.innerText = "Pay with Paystack (M-Pesa)";
-  };
+  }
 
   try {
     const handler = PaystackPop.setup({
       key: PAYSTACK_PUBLIC_KEY,
       email: email,
-      amount: totalAmount * 100, // Amount in cents (KES * 100)
+      amount: totalAmount * 100, // Amount in cents
       currency: "KES",
       ref: 'BK_' + Math.floor((Math.random() * 100000000) + 1),
-      callback: onPaymentSuccess,
-      onClose: onPaymentClose
+      callback: handleSuccess,
+      onClose: handleClose
     });
 
     handler.openIframe();
   } catch (err) {
-    console.error("Paystack popup failed:", err);
+    console.error("Paystack popup error:", err);
     alert("Could not launch payment popup: " + err.message);
     payBtn.disabled = false;
     payBtn.innerText = "Pay with Paystack (M-Pesa)";
