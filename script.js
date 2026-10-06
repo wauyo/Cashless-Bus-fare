@@ -39,7 +39,7 @@ async function fetchRoutes() {
       </div>
       <div class="route-action">
         <p style="margin-bottom: 0.5rem; font-weight: bold; color: var(--primary);">KES ${r.fare}</p>
-        <button onclick="selectRoute('${r.id}', ${r.fare}, ${r.available_seats}, '${r.origin}', '${r.destination}', '${r.departure_time}')">Book Now</button>
+        <button type="button" onclick="selectRoute('${r.id}', ${r.fare}, ${r.available_seats}, '${r.origin}', '${r.destination}', '${r.departure_time}')">Book Now</button>
       </div>
     </div>
   `).join("");
@@ -48,11 +48,13 @@ async function fetchRoutes() {
 function selectRoute(id, fare, availableSeats, origin, destination, time) {
   currentRoute = { id, fare, availableSeats, origin, destination, time };
   document.getElementById("booking-card").style.display = "block";
+  document.getElementById("seats").value = 1;
   updateTotalFare();
   window.scrollTo({ top: document.getElementById("booking-card").offsetTop - 20, behavior: 'smooth' });
 }
 
 function updateTotalFare() {
+  if (!currentRoute) return;
   const seats = parseInt(document.getElementById("seats").value) || 1;
   document.getElementById("total-fare").innerText = (currentRoute.fare * seats).toLocaleString();
 }
@@ -71,55 +73,72 @@ async function handleBooking(e) {
     return;
   }
 
-  const handler = PaystackPop.setup({
-    key: PAYSTACK_PUBLIC_KEY,
-    email: email,
-    amount: totalAmount * 100,
-    currency: "KES",
-    ref: 'BK_' + Math.floor((Math.random() * 100000000) + 1),
-    callback: async function(response) {
-      const { data, error } = await supabaseClient
-        .from("bookings")
-        .insert([{
-          route_id: currentRoute.id,
-          customer_name: name,
-          customer_email: email,
-          customer_phone: phone,
-          seats_booked: seats,
-          total_amount: totalAmount,
-          payment_status: "completed",
-          paystack_reference: response.reference
-        }]);
+  const payBtn = document.getElementById("pay-btn");
+  payBtn.disabled = true;
+  payBtn.innerText = "Processing Payment...";
 
-      if (!error) {
-        await supabaseClient
-          .from("routes")
-          .update({ available_seats: currentRoute.availableSeats - seats })
-          .eq("id", currentRoute.id);
+  try {
+    const paystack = new PaystackPop();
+    paystack.newTransaction({
+      key: PAYSTACK_PUBLIC_KEY,
+      email: email,
+      amount: totalAmount * 100, // Amount in kobo/cents
+      currency: "KES",
+      ref: 'BK_' + Math.floor((Math.random() * 100000000) + 1),
+      onSuccess: async function(transaction) {
+        // Record booking in Supabase
+        const { data, error } = await supabaseClient
+          .from("bookings")
+          .insert([{
+            route_id: currentRoute.id,
+            customer_name: name,
+            customer_email: email,
+            customer_phone: phone,
+            seats_booked: seats,
+            total_amount: totalAmount,
+            payment_status: "completed",
+            paystack_reference: transaction.reference
+          }]);
 
-        await sendEmailReceipt({
-          email,
-          name,
-          origin: currentRoute.origin,
-          destination: currentRoute.destination,
-          time: new Date(currentRoute.time).toLocaleString(),
-          seats,
-          amount: totalAmount,
-          ref: response.reference
-        });
+        if (!error) {
+          // Update available seats count
+          await supabaseClient
+            .from("routes")
+            .update({ available_seats: currentRoute.availableSeats - seats })
+            .eq("id", currentRoute.id);
 
-        alert("Booking completed! Ticket details sent to your email.");
-        location.reload();
-      } else {
-        alert("Booking error: " + error.message);
+          // Send confirmation ticket email via Brevo
+          await sendEmailReceipt({
+            email,
+            name,
+            origin: currentRoute.origin,
+            destination: currentRoute.destination,
+            time: new Date(currentRoute.time).toLocaleString(),
+            seats,
+            amount: totalAmount,
+            ref: transaction.reference
+          });
+
+          alert("Booking & Payment Successful! Confirmation email sent with your ticket.");
+          location.reload();
+        } else {
+          alert("Payment succeeded, but recording booking failed: " + error.message);
+          payBtn.disabled = false;
+          payBtn.innerText = "Pay with Paystack (M-Pesa)";
+        }
+      },
+      onCancel: function() {
+        alert("Payment was cancelled.");
+        payBtn.disabled = false;
+        payBtn.innerText = "Pay with Paystack (M-Pesa)";
       }
-    },
-    onClose: function() {
-      alert("Payment cancelled.");
-    }
-  });
-
-  handler.openIframe();
+    });
+  } catch (err) {
+    console.error("Paystack launch error:", err);
+    alert("Failed to initialize Paystack modal. Please check your internet connection.");
+    payBtn.disabled = false;
+    payBtn.innerText = "Pay with Paystack (M-Pesa)";
+  }
 }
 
 async function sendEmailReceipt(details) {
@@ -136,17 +155,21 @@ async function sendEmailReceipt(details) {
         to: [{ email: details.email, name: details.name }],
         subject: `Bus Ticket Confirmation - ${details.origin} to ${details.destination}`,
         htmlContent: `
-          <h2>Booking Ticket Confirmation</h2>
-          <p>Dear <strong>${details.name}</strong>,</p>
-          <p>Your booking has been successful! Here are your ticket details:</p>
-          <ul>
-            <li><strong>Route:</strong> ${details.origin} to ${details.destination}</li>
-            <li><strong>Departure Time:</strong> ${details.time}</li>
-            <li><strong>Seats Booked:</strong> ${details.seats}</li>
-            <li><strong>Total Paid:</strong> KES ${details.amount}</li>
-            <li><strong>Payment Reference:</strong> ${details.ref}</li>
-          </ul>
-          <p>Have a safe journey!</p>
+          <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #10b981; border-radius: 8px;">
+            <h2 style="color: #10b981;">Booking Ticket Confirmation</h2>
+            <p>Dear <strong>${details.name}</strong>,</p>
+            <p>Your ticket has been successfully booked!</p>
+            <hr />
+            <ul>
+              <li><strong>Route:</strong> ${details.origin} ➔ ${details.destination}</li>
+              <li><strong>Departure Time:</strong> ${details.time}</li>
+              <li><strong>Seats Booked:</strong> ${details.seats}</li>
+              <li><strong>Total Paid:</strong> KES ${details.amount}</li>
+              <li><strong>Transaction Reference:</strong> ${details.ref}</li>
+            </ul>
+            <hr />
+            <p>Thank you for traveling with us!</p>
+          </div>
         `
       })
     });
