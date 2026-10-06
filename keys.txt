@@ -1,0 +1,5 @@
+project url
+https://fcdoixlxylazmosevbtx.supabase.co
+
+publishable key
+sb_publishable_M2NTtqT-2sMrlPSWF4embg_fbbzjvB1 
