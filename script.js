@@ -77,63 +77,80 @@ function handleBooking(e) {
   payBtn.disabled = true;
   payBtn.innerText = "Opening Paystack...";
 
-  // Standard Paystack Pop setup
-  const handler = PaystackPop.setup({
-    key: PAYSTACK_PUBLIC_KEY,
-    email: email,
-    amount: totalAmount * 100, // Amount in cents/kobo
-    currency: "KES",
-    ref: 'BK_' + Math.floor((Math.random() * 100000000) + 1),
-    callback: async function(response) {
-      // Payment successful - save to Supabase
-      const { data, error } = await supabaseClient
-        .from("bookings")
-        .insert([{
-          route_id: currentRoute.id,
-          customer_name: name,
-          customer_email: email,
-          customer_phone: phone,
-          seats_booked: seats,
-          total_amount: totalAmount,
-          payment_status: "completed",
-          paystack_reference: response.reference
-        }]);
+  if (typeof PaystackPop === 'undefined') {
+    alert("Paystack SDK failed to load. Please refresh the page.");
+    payBtn.disabled = false;
+    payBtn.innerText = "Pay with Paystack (M-Pesa)";
+    return;
+  }
 
-      if (!error) {
-        // Decrement seats in database
-        await supabaseClient
-          .from("routes")
-          .update({ available_seats: currentRoute.availableSeats - seats })
-          .eq("id", currentRoute.id);
+  // Success handler function defined explicitly to satisfy Paystack callback validation
+  const onPaymentSuccess = async function(response) {
+    payBtn.innerText = "Processing Booking...";
 
-        // Send ticket email via Brevo
-        await sendEmailReceipt({
-          email,
-          name,
-          origin: currentRoute.origin,
-          destination: currentRoute.destination,
-          time: new Date(currentRoute.time).toLocaleString(),
-          seats,
-          amount: totalAmount,
-          ref: response.reference
-        });
+    const { data, error } = await supabaseClient
+      .from("bookings")
+      .insert([{
+        route_id: currentRoute.id,
+        customer_name: name,
+        customer_email: email,
+        customer_phone: phone,
+        seats_booked: seats,
+        total_amount: totalAmount,
+        payment_status: "completed",
+        paystack_reference: response.reference || response.trxref
+      }]);
 
-        alert("Booking & Payment Successful! Check your email for ticket details.");
-        location.reload();
-      } else {
-        alert("Payment successful, but saving booking failed: " + error.message);
-        payBtn.disabled = false;
-        payBtn.innerText = "Pay with Paystack (M-Pesa)";
-      }
-    },
-    onClose: function() {
-      alert("Payment cancelled.");
+    if (!error) {
+      await supabaseClient
+        .from("routes")
+        .update({ available_seats: currentRoute.availableSeats - seats })
+        .eq("id", currentRoute.id);
+
+      await sendEmailReceipt({
+        email,
+        name,
+        origin: currentRoute.origin,
+        destination: currentRoute.destination,
+        time: new Date(currentRoute.time).toLocaleString(),
+        seats,
+        amount: totalAmount,
+        ref: response.reference || response.trxref
+      });
+
+      alert("Booking & Payment Successful! Check your email for ticket details.");
+      location.reload();
+    } else {
+      alert("Payment successful, but saving booking failed: " + error.message);
       payBtn.disabled = false;
       payBtn.innerText = "Pay with Paystack (M-Pesa)";
     }
-  });
+  };
 
-  handler.openIframe();
+  const onPaymentClose = function() {
+    alert("Payment window closed.");
+    payBtn.disabled = false;
+    payBtn.innerText = "Pay with Paystack (M-Pesa)";
+  };
+
+  try {
+    const handler = PaystackPop.setup({
+      key: PAYSTACK_PUBLIC_KEY,
+      email: email,
+      amount: totalAmount * 100, // Amount in cents (KES * 100)
+      currency: "KES",
+      ref: 'BK_' + Math.floor((Math.random() * 100000000) + 1),
+      callback: onPaymentSuccess,
+      onClose: onPaymentClose
+    });
+
+    handler.openIframe();
+  } catch (err) {
+    console.error("Paystack popup failed:", err);
+    alert("Could not launch payment popup: " + err.message);
+    payBtn.disabled = false;
+    payBtn.innerText = "Pay with Paystack (M-Pesa)";
+  }
 }
 
 async function sendEmailReceipt(details) {
