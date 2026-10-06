@@ -2,7 +2,7 @@
 A system to automate booking of busses and matatu.# Matatu & Bus Online Booking System
 
 A lightweight web app for booking local buses and matatus in Kenya, featuring Paystack M-Pesa payments and Brevo email ticketing.
-Pages https://wauyo.github.io/Cashless-Bus-fare/ link 
+Pages link https://wauyo.github.io/Cashless-Bus-fare/
 
 
 
