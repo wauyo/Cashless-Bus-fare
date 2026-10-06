@@ -84,23 +84,30 @@ function handleBooking(e) {
     return;
   }
 
-  // Explicit function declarations required by Paystack validator
-  function handleSuccess(response) {
-    payBtn.innerText = "Processing Booking...";
+  try {
+    const paystack = new PaystackPop();
+    paystack.newTransaction({
+      key: PAYSTACK_PUBLIC_KEY,
+      email: email,
+      amount: totalAmount * 100, // Amount in cents (KES * 100)
+      currency: "KES",
+      ref: 'BK_' + Math.floor((Math.random() * 100000000) + 1),
+      onSuccess: async function(transaction) {
+        payBtn.innerText = "Processing Booking...";
 
-    supabaseClient
-      .from("bookings")
-      .insert([{
-        route_id: currentRoute.id,
-        customer_name: name,
-        customer_email: email,
-        customer_phone: phone,
-        seats_booked: seats,
-        total_amount: totalAmount,
-        payment_status: "completed",
-        paystack_reference: response.reference || response.trxref
-      }])
-      .then(async ({ data, error }) => {
+        const { data, error } = await supabaseClient
+          .from("bookings")
+          .insert([{
+            route_id: currentRoute.id,
+            customer_name: name,
+            customer_email: email,
+            customer_phone: phone,
+            seats_booked: seats,
+            total_amount: totalAmount,
+            payment_status: "completed",
+            paystack_reference: transaction.reference
+          }]);
+
         if (!error) {
           await supabaseClient
             .from("routes")
@@ -115,7 +122,7 @@ function handleBooking(e) {
             time: new Date(currentRoute.time).toLocaleString(),
             seats,
             amount: totalAmount,
-            ref: response.reference || response.trxref
+            ref: transaction.reference
           });
 
           alert("Booking & Payment Successful! Check your email for ticket details.");
@@ -125,27 +132,13 @@ function handleBooking(e) {
           payBtn.disabled = false;
           payBtn.innerText = "Pay with Paystack (M-Pesa)";
         }
-      });
-  }
-
-  function handleClose() {
-    alert("Payment window closed.");
-    payBtn.disabled = false;
-    payBtn.innerText = "Pay with Paystack (M-Pesa)";
-  }
-
-  try {
-    const handler = PaystackPop.setup({
-      key: PAYSTACK_PUBLIC_KEY,
-      email: email,
-      amount: totalAmount * 100, // Amount in cents
-      currency: "KES",
-      ref: 'BK_' + Math.floor((Math.random() * 100000000) + 1),
-      callback: handleSuccess,
-      onClose: handleClose
+      },
+      onCancel: function() {
+        alert("Payment window closed.");
+        payBtn.disabled = false;
+        payBtn.innerText = "Pay with Paystack (M-Pesa)";
+      }
     });
-
-    handler.openIframe();
   } catch (err) {
     console.error("Paystack popup error:", err);
     alert("Could not launch payment popup: " + err.message);
