@@ -22,3 +22,7 @@ Pages link https://wauyo.github.io/Cashless-Bus-fare/
 - `admin.html` / `admin.js` – Admin dashboard for system management
 - `styles.css`/ `admin.css` – App layout and responsive styling
 - `keys.txt` – Supabase, Paystack, and Brevo API key reference
+
+## Demo Credentials
+Admin wauyo.grant@gmail.com PIN 1234567
+Driver wakio.amos@gmail.com PIN 9090
