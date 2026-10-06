@@ -59,7 +59,7 @@ function updateTotalFare() {
   document.getElementById("total-fare").innerText = (currentRoute.fare * seats).toLocaleString();
 }
 
-async function handleBooking(e) {
+function handleBooking(e) {
   e.preventDefault();
 
   const name = document.getElementById("cust-name").value;
@@ -75,70 +75,65 @@ async function handleBooking(e) {
 
   const payBtn = document.getElementById("pay-btn");
   payBtn.disabled = true;
-  payBtn.innerText = "Processing Payment...";
+  payBtn.innerText = "Opening Paystack...";
 
-  try {
-    const paystack = new PaystackPop();
-    paystack.newTransaction({
-      key: PAYSTACK_PUBLIC_KEY,
-      email: email,
-      amount: totalAmount * 100, // Amount in kobo/cents
-      currency: "KES",
-      ref: 'BK_' + Math.floor((Math.random() * 100000000) + 1),
-      onSuccess: async function(transaction) {
-        // Record booking in Supabase
-        const { data, error } = await supabaseClient
-          .from("bookings")
-          .insert([{
-            route_id: currentRoute.id,
-            customer_name: name,
-            customer_email: email,
-            customer_phone: phone,
-            seats_booked: seats,
-            total_amount: totalAmount,
-            payment_status: "completed",
-            paystack_reference: transaction.reference
-          }]);
+  // Standard Paystack Pop setup
+  const handler = PaystackPop.setup({
+    key: PAYSTACK_PUBLIC_KEY,
+    email: email,
+    amount: totalAmount * 100, // Amount in cents/kobo
+    currency: "KES",
+    ref: 'BK_' + Math.floor((Math.random() * 100000000) + 1),
+    callback: async function(response) {
+      // Payment successful - save to Supabase
+      const { data, error } = await supabaseClient
+        .from("bookings")
+        .insert([{
+          route_id: currentRoute.id,
+          customer_name: name,
+          customer_email: email,
+          customer_phone: phone,
+          seats_booked: seats,
+          total_amount: totalAmount,
+          payment_status: "completed",
+          paystack_reference: response.reference
+        }]);
 
-        if (!error) {
-          // Update available seats count
-          await supabaseClient
-            .from("routes")
-            .update({ available_seats: currentRoute.availableSeats - seats })
-            .eq("id", currentRoute.id);
+      if (!error) {
+        // Decrement seats in database
+        await supabaseClient
+          .from("routes")
+          .update({ available_seats: currentRoute.availableSeats - seats })
+          .eq("id", currentRoute.id);
 
-          // Send confirmation ticket email via Brevo
-          await sendEmailReceipt({
-            email,
-            name,
-            origin: currentRoute.origin,
-            destination: currentRoute.destination,
-            time: new Date(currentRoute.time).toLocaleString(),
-            seats,
-            amount: totalAmount,
-            ref: transaction.reference
-          });
+        // Send ticket email via Brevo
+        await sendEmailReceipt({
+          email,
+          name,
+          origin: currentRoute.origin,
+          destination: currentRoute.destination,
+          time: new Date(currentRoute.time).toLocaleString(),
+          seats,
+          amount: totalAmount,
+          ref: response.reference
+        });
 
-          alert("Booking & Payment Successful! Confirmation email sent with your ticket.");
-          location.reload();
-        } else {
-          alert("Payment succeeded, but recording booking failed: " + error.message);
-          payBtn.disabled = false;
-          payBtn.innerText = "Pay with Paystack (M-Pesa)";
-        }
-      },
-      onCancel: function() {
-        alert("Payment was cancelled.");
+        alert("Booking & Payment Successful! Check your email for ticket details.");
+        location.reload();
+      } else {
+        alert("Payment successful, but saving booking failed: " + error.message);
         payBtn.disabled = false;
         payBtn.innerText = "Pay with Paystack (M-Pesa)";
       }
-    });
-  } catch (err) {
-    console.error("Paystack launch error:", err);
-    alert("Failed to initialize Paystack modal. Please check your internet connection.");
-    payBtn.disabled = false;
-    payBtn.innerText = "Pay with Paystack (M-Pesa)";
-  }
+    },
+    onClose: function() {
+      alert("Payment cancelled.");
+      payBtn.disabled = false;
+      payBtn.innerText = "Pay with Paystack (M-Pesa)";
+    }
+  });
+
+  handler.openIframe();
 }
 
 async function sendEmailReceipt(details) {
