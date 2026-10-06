@@ -10,6 +10,9 @@ document.addEventListener("DOMContentLoaded", () => {
   fetchRoutes();
   document.getElementById("seats").addEventListener("input", updateTotalFare);
   document.getElementById("booking-form").addEventListener("submit", handleBooking);
+  
+  // Handle return redirect from Paystack payment page
+  checkPaymentReturn();
 });
 
 async function fetchRoutes() {
@@ -59,7 +62,7 @@ function updateTotalFare() {
   document.getElementById("total-fare").innerText = (currentRoute.fare * seats).toLocaleString();
 }
 
-function handleBooking(e) {
+async function handleBooking(e) {
   e.preventDefault();
 
   const name = document.getElementById("cust-name").value;
@@ -75,75 +78,105 @@ function handleBooking(e) {
 
   const payBtn = document.getElementById("pay-btn");
   payBtn.disabled = true;
-  payBtn.innerText = "Opening Paystack...";
+  payBtn.innerText = "Redirecting to Paystack...";
 
-  if (typeof PaystackPop === 'undefined') {
-    alert("Paystack SDK failed to load. Please refresh the page.");
-    payBtn.disabled = false;
-    payBtn.innerText = "Pay with Paystack (M-Pesa)";
-    return;
-  }
+  // Save temporary booking details to localStorage before redirecting
+  const bookingData = {
+    route_id: currentRoute.id,
+    customer_name: name,
+    customer_email: email,
+    customer_phone: phone,
+    seats_booked: seats,
+    total_amount: totalAmount,
+    origin: currentRoute.origin,
+    destination: currentRoute.destination,
+    time: currentRoute.time,
+    availableSeats: currentRoute.availableSeats
+  };
+  localStorage.setItem("pending_booking", JSON.stringify(bookingData));
 
   try {
-    const paystack = new PaystackPop();
-    paystack.newTransaction({
-      key: PAYSTACK_PUBLIC_KEY,
-      email: email,
-      amount: totalAmount * 100, // Amount in cents (KES * 100)
-      currency: "KES",
-      ref: 'BK_' + Math.floor((Math.random() * 100000000) + 1),
-      onSuccess: async function(transaction) {
-        payBtn.innerText = "Processing Booking...";
-
-        const { data, error } = await supabaseClient
-          .from("bookings")
-          .insert([{
-            route_id: currentRoute.id,
-            customer_name: name,
-            customer_email: email,
-            customer_phone: phone,
-            seats_booked: seats,
-            total_amount: totalAmount,
-            payment_status: "completed",
-            paystack_reference: transaction.reference
-          }]);
-
-        if (!error) {
-          await supabaseClient
-            .from("routes")
-            .update({ available_seats: currentRoute.availableSeats - seats })
-            .eq("id", currentRoute.id);
-
-          await sendEmailReceipt({
-            email,
-            name,
-            origin: currentRoute.origin,
-            destination: currentRoute.destination,
-            time: new Date(currentRoute.time).toLocaleString(),
-            seats,
-            amount: totalAmount,
-            ref: transaction.reference
-          });
-
-          alert("Booking & Payment Successful! Check your email for ticket details.");
-          location.reload();
-        } else {
-          alert("Payment successful, but saving booking failed: " + error.message);
-          payBtn.disabled = false;
-          payBtn.innerText = "Pay with Paystack (M-Pesa)";
-        }
+    // Direct API call to Paystack Transaction Initialize
+    const response = await fetch("https://api.paystack.co/transaction/initialize", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${PAYSTACK_PUBLIC_KEY}`,
+        "Content-Type": "application/json"
       },
-      onCancel: function() {
-        alert("Payment window closed.");
-        payBtn.disabled = false;
-        payBtn.innerText = "Pay with Paystack (M-Pesa)";
-      }
+      body: JSON.stringify({
+        email: email,
+        amount: totalAmount * 100, // Amount in cents (KES * 100)
+        currency: "KES",
+        callback_url: window.location.href.split('?')[0] + "?status=success"
+      })
     });
+
+    const result = await response.json();
+
+    if (result.status && result.data.authorization_url) {
+      // Redirect browser directly to Paystack official checkout page
+      window.location.href = result.data.authorization_url;
+    } else {
+      alert("Failed to initialize payment: " + (result.message || "Unknown error"));
+      payBtn.disabled = false;
+      payBtn.innerText = "Pay with Paystack (M-Pesa)";
+    }
   } catch (err) {
-    console.error("Paystack popup error:", err);
-    alert("Could not launch payment popup: " + err.message);
+    console.error("Paystack Direct API Error:", err);
+    alert("Error connecting to Paystack. Please check your internet connection.");
     payBtn.disabled = false;
     payBtn.innerText = "Pay with Paystack (M-Pesa)";
+  }
+}
+
+async function checkPaymentReturn() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const status = urlParams.get("status");
+  const reference = urlParams.get("reference") || urlParams.get("trxref");
+  const pendingBooking = localStorage.getItem("pending_booking");
+
+  if (status === "success" && reference && pendingBooking) {
+    const details = JSON.parse(pendingBooking);
+
+    // Save completed booking to Supabase
+    const { data, error } = await supabaseClient
+      .from("bookings")
+      .insert([{
+        route_id: details.route_id,
+        customer_name: details.customer_name,
+        customer_email: details.customer_email,
+        customer_phone: details.customer_phone,
+        seats_booked: details.seats_booked,
+        total_amount: details.total_amount,
+        payment_status: "completed",
+        paystack_reference: reference
+      }]);
+
+    if (!error) {
+      // Decrement seats
+      await supabaseClient
+        .from("routes")
+        .update({ available_seats: details.availableSeats - details.seats_booked })
+        .eq("id", details.route_id);
+
+      // Send confirmation email via Brevo
+      await sendEmailReceipt({
+        email: details.customer_email,
+        name: details.customer_name,
+        origin: details.origin,
+        destination: details.destination,
+        time: new Date(details.time).toLocaleString(),
+        seats: details.seats_booked,
+        amount: details.total_amount,
+        ref: reference
+      });
+
+      localStorage.removeItem("pending_booking");
+      alert("Booking & Payment Successful! Check your email for ticket details.");
+      window.location.href = window.location.pathname; // Clean URL parameters
+    } else {
+      alert("Payment verified, but saving booking failed: " + error.message);
+    }
   }
 }
 
