@@ -1,17 +1,14 @@
 const SUPABASE_URL = "https://fcdoixlxylazmosevbtx.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_M2NTtqT-2sMrlPSWF4embg_fbbzjvB1";
-const PAYSTACK_PUBLIC_KEY = "pk_test_your_paystack_public_key_here"; // Replace with your key
+const PAYSTACK_PUBLIC_KEY = "pk_test_your_paystack_public_key_here";
+const BREVO_API_KEY = "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";
 
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 let currentRoute = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   fetchRoutes();
-
-  const seatsInput = document.getElementById("seats");
-  seatsInput.addEventListener("input", updateTotalFare);
-
+  document.getElementById("seats").addEventListener("input", updateTotalFare);
   document.getElementById("booking-form").addEventListener("submit", handleBooking);
 });
 
@@ -28,19 +25,20 @@ async function fetchRoutes() {
   }
 
   if (!routes || routes.length === 0) {
-    container.innerHTML = "<p>No routes available currently.</p>";
+    container.innerHTML = "<p>No active routes available right now.</p>";
     return;
   }
 
   container.innerHTML = routes.map(r => `
     <div class="route-item">
-      <div>
-        <strong>${r.origin} ➔ ${r.destination}</strong><br>
-        <small>Matatu: ${r.matatus ? r.matatus.registration_number : 'N/A'} | Time: ${new Date(r.departure_time).toLocaleString()}</small><br>
-        <small>Available Seats: ${r.available_seats}</small>
+      <div class="route-info">
+        <h3>${r.origin} ➔ ${r.destination}</h3>
+        <p><small>Vehicle: ${r.matatus ? r.matatus.registration_number : 'N/A'}</small></p>
+        <p><small>Departure: ${new Date(r.departure_time).toLocaleString()}</small></p>
+        <p><small>Seats Available: ${r.available_seats}</small></p>
       </div>
-      <div>
-        <strong>KES ${r.fare}</strong><br>
+      <div class="route-action">
+        <p style="margin-bottom: 0.5rem; font-weight: bold; color: var(--primary);">KES ${r.fare}</p>
         <button onclick="selectRoute('${r.id}', ${r.fare}, ${r.available_seats}, '${r.origin}', '${r.destination}', '${r.departure_time}')">Book Now</button>
       </div>
     </div>
@@ -49,17 +47,14 @@ async function fetchRoutes() {
 
 function selectRoute(id, fare, availableSeats, origin, destination, time) {
   currentRoute = { id, fare, availableSeats, origin, destination, time };
-  document.getElementById("selected-route-id").value = id;
-  document.getElementById("selected-fare").value = fare;
   document.getElementById("booking-card").style.display = "block";
   updateTotalFare();
-  window.scrollTo({ top: document.getElementById("booking-card").offsetTop, behavior: 'smooth' });
+  window.scrollTo({ top: document.getElementById("booking-card").offsetTop - 20, behavior: 'smooth' });
 }
 
 function updateTotalFare() {
-  const fare = parseFloat(document.getElementById("selected-fare").value) || 0;
   const seats = parseInt(document.getElementById("seats").value) || 1;
-  document.getElementById("total-fare").innerText = fare * seats;
+  document.getElementById("total-fare").innerText = (currentRoute.fare * seats).toLocaleString();
 }
 
 async function handleBooking(e) {
@@ -72,24 +67,17 @@ async function handleBooking(e) {
   const totalAmount = currentRoute.fare * seats;
 
   if (seats > currentRoute.availableSeats) {
-    alert("Not enough available seats.");
+    alert("Requested seats exceed available capacity.");
     return;
   }
 
-  // Trigger Paystack STK Push
   const handler = PaystackPop.setup({
     key: PAYSTACK_PUBLIC_KEY,
     email: email,
-    amount: totalAmount * 100, // Paystack operates in kobo/cents
+    amount: totalAmount * 100,
     currency: "KES",
-    ref: 'BK_' + Math.floor((Math.random() * 1000000000) + 1),
-    metadata: {
-      custom_fields: [
-        { display_name: "Mobile Number", variable_name: "mobile_number", value: phone }
-      ]
-    },
+    ref: 'BK_' + Math.floor((Math.random() * 100000000) + 1),
     callback: async function(response) {
-      // Payment successful, insert booking into database
       const { data, error } = await supabaseClient
         .from("bookings")
         .insert([{
@@ -104,22 +92,65 @@ async function handleBooking(e) {
         }]);
 
       if (!error) {
-        // Update available seats count
         await supabaseClient
           .from("routes")
           .update({ available_seats: currentRoute.availableSeats - seats })
           .eq("id", currentRoute.id);
 
-        alert(`Booking successful! Confirmation sent to ${email}.\nDeparts at: ${new Date(currentRoute.time).toLocaleString()}`);
+        await sendEmailReceipt({
+          email,
+          name,
+          origin: currentRoute.origin,
+          destination: currentRoute.destination,
+          time: new Date(currentRoute.time).toLocaleString(),
+          seats,
+          amount: totalAmount,
+          ref: response.reference
+        });
+
+        alert("Booking completed! Ticket details sent to your email.");
         location.reload();
       } else {
-        alert("Payment was completed, but recording booking failed. Please contact support.");
+        alert("Booking error: " + error.message);
       }
     },
     onClose: function() {
-      alert("Transaction was cancelled.");
+      alert("Payment cancelled.");
     }
   });
 
   handler.openIframe();
+}
+
+async function sendEmailReceipt(details) {
+  try {
+    await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "accept": "application/json",
+        "api-key": BREVO_API_KEY,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        sender: { name: "Matatu Booking", email: "wauyo.grant@gmail.com" },
+        to: [{ email: details.email, name: details.name }],
+        subject: `Bus Ticket Confirmation - ${details.origin} to ${details.destination}`,
+        htmlContent: `
+          <h2>Booking Ticket Confirmation</h2>
+          <p>Dear <strong>${details.name}</strong>,</p>
+          <p>Your booking has been successful! Here are your ticket details:</p>
+          <ul>
+            <li><strong>Route:</strong> ${details.origin} to ${details.destination}</li>
+            <li><strong>Departure Time:</strong> ${details.time}</li>
+            <li><strong>Seats Booked:</strong> ${details.seats}</li>
+            <li><strong>Total Paid:</strong> KES ${details.amount}</li>
+            <li><strong>Payment Reference:</strong> ${details.ref}</li>
+          </ul>
+          <p>Have a safe journey!</p>
+        `
+      })
+    });
+  } catch (err) {
+    console.error("Brevo email failed:", err);
+  }
 }

@@ -9,70 +9,72 @@
 </head>
 <body>
   <header>
-    <h1>Matatu Portal - Driver / Owner</h1>
-    <nav><a href="index.html">Customer View</a></nav>
+    <div class="header-container">
+      <h1>Driver & Owner Portal</h1>
+      <nav><a href="index.html">Customer View</a></nav>
+    </div>
   </header>
 
   <div class="container">
     <div class="card" id="login-card">
       <h2>Driver Login</h2>
-      <form id="login-form">
+      <form id="driver-login-form">
         <div class="form-group">
           <label>Email</label>
-          <input type="email" id="driver-email" required>
+          <input type="email" id="d-email" required>
         </div>
         <div class="form-group">
           <label>PIN</label>
-          <input type="password" id="driver-pin" required>
+          <input type="password" id="d-pin" required>
         </div>
         <button type="submit">Login</button>
       </form>
     </div>
 
-    <div id="driver-dashboard" style="display: none;">
+    <div id="driver-dash" style="display: none;">
       <div class="card">
-        <h2>Update Credentials / Details</h2>
-        <form id="update-profile-form">
+        <h2>Driver Profile Credentials</h2>
+        <form id="driver-profile-form">
           <div class="form-group">
             <label>Driver Name</label>
-            <input type="text" id="prof-driver-name" required>
+            <input type="text" id="p-name" required>
           </div>
           <div class="form-group">
             <label>Phone Number</label>
-            <input type="text" id="prof-phone" required>
+            <input type="text" id="p-phone" required>
           </div>
           <div class="form-group">
             <label>Update PIN</label>
-            <input type="password" id="prof-pin" required>
+            <input type="password" id="p-pin" required>
           </div>
-          <button type="submit">Update Profile</button>
+          <button type="submit">Update Details</button>
         </form>
       </div>
 
       <div class="card">
-        <h2>Add New Route</h2>
+        <h2>Publish New Route</h2>
         <form id="add-route-form">
           <div class="form-group">
             <label>Origin</label>
-            <input type="text" id="route-origin" required placeholder="e.g. Voi">
+            <input type="text" id="r-origin" placeholder="e.g. Voi" required>
           </div>
           <div class="form-group">
             <label>Destination</label>
-            <input type="text" id="route-dest" required placeholder="e.g. Mombasa">
+            <input type="text" id="r-dest" placeholder="e.g. Mombasa" required>
           </div>
           <div class="form-group">
             <label>Departure Time</label>
-            <input type="datetime-local" id="route-time" required>
+            <input type="datetime-local" id="r-time" required>
           </div>
           <div class="form-group">
             <label>Fare (KES)</label>
-            <input type="number" id="route-fare" required>
+            <input type="number" id="r-fare" required>
           </div>
           <div class="form-group">
-            <label>Available Seats</label>
-            <input type="number" id="route-seats" value="14" required>
+            <label>Seats Available</label>
+            <input type="number" id="r-seats" value="14" required>
           </div>
-          <button type="submit">Post Route</button>
+          <button type="submit">Publish Route</button>
         </form>
       </div>
     </div>

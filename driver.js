@@ -4,10 +4,10 @@ const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentDriver = null;
 
-document.getElementById("login-form").addEventListener("submit", async (e) => {
+document.getElementById("driver-login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const email = document.getElementById("driver-email").value;
-  const pin = document.getElementById("driver-pin").value;
+  const email = document.getElementById("d-email").value;
+  const pin = document.getElementById("d-pin").value;
 
   const { data, error } = await supabaseClient
     .from("matatus")
@@ -17,58 +17,49 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
     .single();
 
   if (error || !data) {
-    alert("Invalid Email or PIN");
+    alert("Invalid credentials.");
     return;
   }
 
   currentDriver = data;
   document.getElementById("login-card").style.display = "none";
-  document.getElementById("driver-dashboard").style.display = "block";
+  document.getElementById("driver-dash").style.display = "block";
 
-  document.getElementById("prof-driver-name").value = data.driver_name || '';
-  document.getElementById("prof-phone").value = data.phone_number || '';
-  document.getElementById("prof-pin").value = data.pin;
+  document.getElementById("p-name").value = data.driver_name || "";
+  document.getElementById("p-phone").value = data.phone_number || "";
+  document.getElementById("p-pin").value = data.pin;
 });
 
-document.getElementById("update-profile-form").addEventListener("submit", async (e) => {
+document.getElementById("driver-profile-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const driver_name = document.getElementById("prof-driver-name").value;
-  const phone_number = document.getElementById("prof-phone").value;
-  const pin = document.getElementById("prof-pin").value;
+  const driver_name = document.getElementById("p-name").value;
+  const phone_number = document.getElementById("p-phone").value;
+  const pin = document.getElementById("p-pin").value;
 
   const { error } = await supabaseClient
     .from("matatus")
     .update({ driver_name, phone_number, pin })
     .eq("id", currentDriver.id);
 
-  if (!error) {
-    alert("Credentials updated successfully!");
-  } else {
-    alert("Error updating credentials.");
-  }
+  if (!error) alert("Profile updated!");
+  else alert("Error updating profile.");
 });
 
 document.getElementById("add-route-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const origin = document.getElementById("route-origin").value;
-  const destination = document.getElementById("route-dest").value;
-  const departure_time = document.getElementById("route-time").value;
-  const fare = parseFloat(document.getElementById("route-fare").value);
-  const available_seats = parseInt(document.getElementById("route-seats").value);
-
   const { error } = await supabaseClient
     .from("routes")
     .insert([{
       matatu_id: currentDriver.id,
-      origin,
-      destination,
-      departure_time,
-      fare,
-      available_seats
+      origin: document.getElementById("r-origin").value,
+      destination: document.getElementById("r-dest").value,
+      departure_time: document.getElementById("r-time").value,
+      fare: parseFloat(document.getElementById("r-fare").value),
+      available_seats: parseInt(document.getElementById("r-seats").value)
     }]);
 
   if (!error) {
-    alert("Route posted successfully!");
+    alert("Route added!");
     document.getElementById("add-route-form").reset();
   } else {
     alert("Failed to add route.");

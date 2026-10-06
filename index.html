@@ -3,18 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Matatu & Bus Booking</title>
+  <title>Matatu & Bus Online Booking</title>
   <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://js.paystack.co/v1/inline.js"></script>
 </head>
 <body>
   <header>
-    <h1>Matatu Express Booking</h1>
-    <nav>
-      <a href="driver.html">Driver Portal</a>
-      <a href="admin.html">Admin</a>
-    </nav>
+    <div class="header-container">
+      <h1>Matatu Booking Service</h1>
+      <nav>
+        <a href="driver.html">Driver Portal</a>
+        <a href="admin.html">Admin</a>
+      </nav>
+    </div>
   </header>
 
   <div class="container">
@@ -24,24 +26,21 @@
     </div>
 
     <div class="card" id="booking-card" style="display: none;">
-      <h2>Complete Booking & Pay (M-Pesa)</h2>
+      <h2>Complete Booking</h2>
       <form id="booking-form">
-        <input type="hidden" id="selected-route-id">
-        <input type="hidden" id="selected-fare">
-        
         <div class="form-group">
           <label for="cust-name">Full Name</label>
-          <input type="text" id="cust-name" required placeholder="John Doe">
+          <input type="text" id="cust-name" placeholder="John Doe" required>
         </div>
 
         <div class="form-group">
-          <label for="cust-email">Email Address (For ticket details)</label>
-          <input type="email" id="cust-email" required placeholder="john@example.com">
+          <label for="cust-email">Email Address</label>
+          <input type="email" id="cust-email" placeholder="john@example.com" required>
         </div>
 
         <div class="form-group">
-          <label for="cust-phone">M-Pesa Phone Number</label>
-          <input type="tel" id="cust-phone" required placeholder="0712345678">
+          <label for="cust-phone">Phone Number (M-Pesa)</label>
+          <input type="tel" id="cust-phone" placeholder="0712345678" required>
         </div>
 
         <div class="form-group">
@@ -49,9 +48,9 @@
           <input type="number" id="seats" min="1" value="1" required>
         </div>
 
-        <p><strong>Total Fare:</strong> KES <span id="total-fare">0</span></p>
+        <p style="margin-top: 0.5rem;"><strong>Total Fare:</strong> KES <span id="total-fare">0</span></p>
 
-        <button type="submit" id="pay-btn">Pay via M-Pesa (STK Push)</button>
+        <button type="submit" id="pay-btn">Pay with Paystack (M-Pesa)</button>
       </form>
     </div>
   </div>
